@@ -87,7 +87,6 @@ Unlike standard chatbots, DocuMind uses **Retrieval Augmented Generation (RAG)**
 ---
 
 ## Architecture
-
 ```mermaid
 graph LR
     A[PDF Document] -->|PyPDF Loader| B[Raw Text]
@@ -99,3 +98,18 @@ graph LR
     D -->|Top-k Context| F[Llama-3 Prompt]
     U --> F
     F -->|Groq Inference| G[Final Answer + Citations]
+```
+
+## Future Improvements
+Hybrid Search: Implementing BM25 keyword search to improve retrieval for specific numerical values (e.g., "Error 505").
+
+Table Parsing: Integrating Unstructured.io to better parse complex financial balance sheets.
+
+Agentic Routing: Using LangGraph to let the AI decide when to use a Calculator tool for financial ratios.
+
+### Contributing
+Open to contributions! Please fork the repo and submit a PR.
+
+Author: Devika Rudagi
+
+License: MIT
