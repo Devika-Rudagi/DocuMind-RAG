@@ -21,6 +21,10 @@ Unlike standard chatbots, DocuMind uses **Retrieval Augmented Generation (RAG)**
 * **Private & Free Embeddings:** Uses local HuggingFace embeddings (`all-MiniLM-L6-v2`) running on-device, ensuring document vectors are not sent to third-party APIs.
 * **Persistent Memory:** Automatically caches vectors in `ChromaDB` to prevent re-indexing the same document twice.
 
+version2:
+* **Conversational Memory**: Remembers context from previous turns. You can ask "What was the revenue?" followed by "How does that compare to last year?"
+* **Persistence**: Uses SQLite to save conversation history to disk (memory.db). Your chat history survives script restarts.
+* **History-Aware Retrieval**: A specialized "Re-writer" chain reformulates follow-up questions to ensure accurate vector database searches.
 ---
 
 ## Tech Stack
@@ -32,6 +36,7 @@ Unlike standard chatbots, DocuMind uses **Retrieval Augmented Generation (RAG)**
 | **Vector DB** | [ChromaDB](https://www.trychroma.com/) | Lightweight, open-source vector store for semantic search. |
 | **Embeddings** | [HuggingFace](https://huggingface.co/) | `all-MiniLM-L6-v2` for state-of-the-art sentence similarity without API costs. |
 | **Data Ingestion** | `PyPDF` | For extracting raw text from unstructured PDF layouts. |
+| **Memory Store** | `SQLite (SQLChatMessageHistory)` | for storing chat history in version 2|
 
 ---
 
@@ -84,6 +89,19 @@ Unlike standard chatbots, DocuMind uses **Retrieval Augmented Generation (RAG)**
     - Page 18: ...international operations risks...
     ```
 
+    version 2:
+    ```
+    Example Conversation Flow
+    [Investor]: What was the total net sales for 2022? [Analyst]: The total net sales for 2022 were $394,328 million.
+
+    [Investor]: How does that compare to 2021? (Tests Context) [Analyst]: That represents an 8% increase compared to 2021, where net sales were $365,817 million.
+
+    [Investor]: exit
+
+    ... Restart the script ...
+
+    [Investor]: What was the 2021 figure we just discussed? (Tests Persistence) [Analyst]: We discussed that the 2021 net sales were $365,817 million.
+    ```
 ---
 
 ## Architecture
@@ -99,6 +117,15 @@ graph LR
     U --> F
     F -->|Groq Inference| G[Final Answer + Citations]
 ```
+
+## version 2 Architecture upgrade
+
+DocuMind uses a History-Aware RAG pipeline:
+1. **Input**: User asks a question (e.g., "Is it higher?").
+2. **Contextualization Chain**: The LLM rewrites the question using chat history (e.g., "Is Apple's 2022 revenue higher?").
+3. **Retrieval**: The re-phrased question searches ChromaDB for relevant PDF chunks.
+4. **Generation**: The LLM generates an answer using the retrieved chunks.
+5. **Storage**: The interaction is saved to memory.db via SQLite.
 
 ## Future Improvements
 Hybrid Search: Implementing BM25 keyword search to improve retrieval for specific numerical values (e.g., "Error 505").
