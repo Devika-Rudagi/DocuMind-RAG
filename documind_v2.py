@@ -9,7 +9,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
-from google.colab import userdata
+#from google.colab import userdata
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_core.messages import trim_messages
 from langchain_core.messages import HumanMessage, AIMessage
@@ -43,7 +43,7 @@ class DocuMind:
         self.vectorstore = Chroma.from_documents(
             documents=splits,
             embedding=embedding_model,
-            persist_directory="./documind_db"
+            persist_directory="./data/documind_db"
         )
         print("Knowledge Base Ready!")
 
@@ -52,14 +52,15 @@ class DocuMind:
         return "\n\n".join(doc.page_content for doc in docs)
 
     def setup_chain(self):
-        GROQ_API_KEY = userdata.get('LLM-Learn-API-key-02')
+        #GROQ_API_KEY = userdata.get('LLM-Learn-API-key-02')
+        GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
         llm = ChatGroq(groq_api_key=GROQ_API_KEY, model_name="llama-3.1-8b-instant", temperature=0)
 
         # 1. Vector Store Setup
         if self.vectorstore is None:
             embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             self.vectorstore = Chroma(
-                persist_directory="./documind_db",
+                persist_directory="./data/documind_db",
                 embedding_function=embedding_model
             )
         retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
@@ -121,7 +122,7 @@ class DocuMind:
         def get_session_history(session_id: str):
             return SQLChatMessageHistory(
                 session_id=session_id,
-                connection_string="sqlite:///memory.db"
+                connection="sqlite:///data/memory.db" #changed from connection_string to connection
             )
 
         # C. The Final Chain
@@ -156,10 +157,10 @@ if __name__ == "__main__":
     app = DocuMind(pdf_file)
 
     # Check if DB exists to avoid re-ingesting every time (Optimization)
-    if os.path.exists("./documind_db"):
+    if os.path.exists("./data/documind_db"):
         print("Database found. Loading...")
         embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        app.vectorstore = Chroma(persist_directory="./documind_db", embedding_function=embedding_model)
+        app.vectorstore = Chroma(persist_directory="./data/documind_db", embedding_function=embedding_model)
     else:
         app.ingest()
 

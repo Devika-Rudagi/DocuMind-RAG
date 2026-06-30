@@ -1,0 +1,12 @@
+venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.DS_Store
+.env
+documind_db/
+memory.db
+data/
+apple_10k.pdf
+*.docx
