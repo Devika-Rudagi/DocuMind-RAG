@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import boto3
+import tempfile
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
@@ -9,15 +11,30 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from documind_v2 import DocuMind
 
-agent = DocuMind(pdf_path="apple_10k.pdf")
+# S3 setup
+s3_client = boto3.client(
+    's3',
+    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.environ.get('AWS_REGION', 'us-east-1')
+)
+BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME')
+
+def upload_to_s3(local_path: str, filename: str) -> str:
+    s3_key = f"uploads/{filename}"
+    s3_client.upload_file(local_path, BUCKET_NAME, s3_key)
+    return s3_key
+
+def download_from_s3(s3_key: str, local_path: str):
+    s3_client.download_file(BUCKET_NAME, s3_key, local_path)
+
+# DocuMind agent
+agent = DocuMind(pdf_path="placeholder.pdf")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Runs ONCE when server starts
     if os.path.exists("./data/documind_db"):
         print("Existing knowledge base found — loading...")
-        from langchain_huggingface import HuggingFaceEmbeddings
-        from langchain_chroma import Chroma
         embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         agent.vectorstore = Chroma(
             persist_directory="./data/documind_db",
@@ -26,7 +43,6 @@ async def lifespan(app: FastAPI):
         agent.setup_chain()
         print("Knowledge base loaded. Ready to answer questions.")
     yield
-    # Runs on shutdown (cleanup if needed — nothing for now)
 
 app = FastAPI(title="DocuMind API", lifespan=lifespan)
 
@@ -46,18 +62,24 @@ async def upload_pdf(file: UploadFile = File(...)):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    save_path = f"./data/{file.filename}"
-    os.makedirs("./data", exist_ok=True)
-
-    with open(save_path, "wb") as f:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         content = await file.read()
-        f.write(content)
+        tmp.write(content)
+        tmp_path = tmp.name
 
-    agent.pdf_path = save_path
-    agent.ingest()
-    agent.setup_chain()
+    try:
+        s3_key = upload_to_s3(tmp_path, file.filename)
+        print(f"PDF uploaded to S3: {s3_key}")
+        agent.pdf_path = tmp_path
+        agent.ingest()
+        agent.setup_chain()
+    finally:
+        os.unlink(tmp_path)
 
-    return {"message": f"{file.filename} ingested successfully"}
+    return {
+        "message": f"{file.filename} ingested successfully",
+        "s3_key": s3_key
+    }
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
@@ -66,7 +88,6 @@ def query(request: QueryRequest):
             status_code=400,
             detail="No document has been ingested yet. Call /upload first."
         )
-
     try:
         answer = agent.ask(request.question, session_id=request.session_id)
     except AttributeError:
@@ -74,5 +95,4 @@ def query(request: QueryRequest):
             status_code=400,
             detail="DocuMind chain not initialized. Call /upload first."
         )
-
     return QueryResponse(answer=answer)
